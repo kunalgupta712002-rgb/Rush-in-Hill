@@ -1,0 +1,286 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 4.1: Global Safety Net (Default-Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 3: Hardened Global Primitives
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Zero-DB-read bootstrap admin check (safe for list queries without get/exists cost)
+    function isBootstrapAdmin() {
+      return isVerifiedEmail() && request.auth.token.email == 'kunalgupta712002@gmail.com';
+    }
+
+    // Full RBAC admin check for single-document operations
+    function isAdmin() {
+      return isBootstrapAdmin() ||
+        (isVerifiedEmail() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function isValidCustomerType(val) {
+      return val is string &&
+        val.size() >= 1 &&
+        val.size() <= 40 &&
+        val in ['DGU Student', 'Day Scholar', 'Industrial Employee', 'Other'];
+    }
+
+    function isValidOrderStatus(val) {
+      return val is string &&
+        val.size() >= 1 &&
+        val.size() <= 20 &&
+        val in ['PLACED', 'CONFIRMED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
+    }
+
+    function isValidPaymentStatus(val) {
+      return val is string &&
+        val.size() >= 1 &&
+        val.size() <= 20 &&
+        val in ['Pending', 'Paid'];
+    }
+
+    // -------------------------------------------------------------------------
+    // Pillar 2: Standalone Validation Blueprints (Anti-Update-Gap)
+    // -------------------------------------------------------------------------
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'customerType', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'displayName', 'email', 'phone', 'customerType', 'photoURL', 'createdAt', 'updatedAt']) &&
+        isValidId(data.uid) &&
+        data.uid == userId &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+        (!('phone' in data) || (data.phone is string && data.phone.size() <= 15 && data.phone.matches('^(|[6-9][0-9]{9})$'))) &&
+        isValidCustomerType(data.customerType) &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'createdAt']) &&
+        isValidId(data.uid) &&
+        data.uid == userId &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 150 &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidOrder(data, orderId) {
+      return data.keys().hasAll([
+          'id', 'customerId', 'customerName', 'phone', 'customerType', 'items',
+          'subtotal', 'discount', 'total', 'orderType', 'paymentMethod',
+          'paymentStatus', 'orderStatus', 'estimatedPrepTimeMinutes',
+          'hasFeedbackSubmitted', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'customerId', 'customerName', 'phone', 'email', 'customerType', 'items',
+          'subtotal', 'discount', 'total', 'orderType', 'tableNumber', 'paymentMethod',
+          'paymentStatus', 'orderStatus', 'specialInstructions', 'estimatedPrepTimeMinutes',
+          'hasFeedbackSubmitted', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidId(data.id) &&
+        data.id == orderId &&
+        isValidId(data.customerId) &&
+        data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 &&
+        data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 15 && data.phone.matches('^[6-9][0-9]{9}$') &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 150)) &&
+        isValidCustomerType(data.customerType) &&
+        data.items is list && data.items.size() >= 1 && data.items.size() <= 50 && data.items[0] is map &&
+        data.subtotal is number && data.subtotal >= 0 && data.subtotal <= 100000 &&
+        data.discount is number && data.discount >= 0 && data.discount <= 50000 &&
+        data.total is number && data.total >= 0 && data.total <= 100000 &&
+        data.orderType is string && data.orderType.size() >= 1 && data.orderType.size() <= 30 &&
+        data.orderType in ['Takeaway / Pickup', 'Dine-in'] &&
+        (!('tableNumber' in data) || (data.tableNumber is string && data.tableNumber.size() <= 40)) &&
+        data.paymentMethod is string && data.paymentMethod.size() >= 1 && data.paymentMethod.size() <= 40 &&
+        data.paymentMethod in ['UPI / Online Payment (Demo)', 'Pay at Counter'] &&
+        isValidPaymentStatus(data.paymentStatus) &&
+        isValidOrderStatus(data.orderStatus) &&
+        (!('specialInstructions' in data) || (data.specialInstructions is string && data.specialInstructions.size() <= 300)) &&
+        data.estimatedPrepTimeMinutes is number && data.estimatedPrepTimeMinutes >= 1 && data.estimatedPrepTimeMinutes <= 180 &&
+        data.hasFeedbackSubmitted is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidFeedback(data, feedbackId) {
+      return data.keys().hasAll([
+          'id', 'orderId', 'customerId', 'customerName', 'overallRating',
+          'tasteRating', 'hygieneRating', 'serviceRating', 'valueRating',
+          'comment', 'wouldRecommend', 'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'id', 'orderId', 'customerId', 'customerName', 'overallRating',
+          'tasteRating', 'hygieneRating', 'serviceRating', 'valueRating',
+          'comment', 'wouldRecommend', 'createdAt'
+        ]) &&
+        isValidId(data.id) &&
+        data.id == feedbackId &&
+        isValidId(data.orderId) &&
+        isValidId(data.customerId) &&
+        data.customerName is string && data.customerName.size() >= 1 && data.customerName.size() <= 100 &&
+        data.overallRating is number && data.overallRating >= 1 && data.overallRating <= 5 &&
+        data.tasteRating is number && data.tasteRating >= 1 && data.tasteRating <= 5 &&
+        data.hygieneRating is number && data.hygieneRating >= 1 && data.hygieneRating <= 5 &&
+        data.serviceRating is number && data.serviceRating >= 1 && data.serviceRating <= 5 &&
+        data.valueRating is number && data.valueRating >= 1 && data.valueRating <= 5 &&
+        data.comment is string && data.comment.size() <= 500 &&
+        data.wouldRecommend is string && data.wouldRecommend.size() >= 1 && data.wouldRecommend.size() <= 10 &&
+        data.wouldRecommend in ['Yes', 'Maybe', 'No'] &&
+        data.createdAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection: /users/{userId} — Private Customer Profile (PII Isolated)
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrapAdmin();
+
+      allow create: if isVerifiedEmail() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().uid == request.auth.uid &&
+        incoming().email == request.auth.token.email &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action: Owner updates own profile fields (zero extra DB reads)
+          (
+            isOwner(userId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'customerType', 'photoURL', 'updatedAt'])
+          ) ||
+          // Action: Admin updates profile fields
+          (
+            isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'phone', 'customerType', 'photoURL', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection: /admins/{userId} — Trusted Admin RBAC Allowlist
+    // -------------------------------------------------------------------------
+    match /admins/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrapAdmin();
+
+      allow create: if isAdmin() &&
+        isValidId(userId) &&
+        isValidAdminRecord(incoming(), userId) &&
+        incoming().createdAt == request.time;
+
+      allow update: if false;
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection: /orders/{orderId} — Authenticated Customer Orders
+    // -------------------------------------------------------------------------
+    match /orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId) && (existing().customerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.customerId == request.auth.uid || isBootstrapAdmin());
+
+      allow create: if isVerifiedEmail() &&
+        isValidId(orderId) &&
+        isValidOrder(incoming(), orderId) &&
+        incoming().customerId == request.auth.uid &&
+        incoming().orderStatus == 'PLACED' &&
+        incoming().hasFeedbackSubmitted == false &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(orderId) &&
+        isValidOrder(incoming(), orderId) &&
+        incoming().id == existing().id &&
+        incoming().customerId == existing().customerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          // Action 1 (Customer): Mark feedback submitted on own READY/COMPLETED order
+          (
+            existing().customerId == request.auth.uid &&
+            existing().hasFeedbackSubmitted == false &&
+            existing().orderStatus in ['READY', 'COMPLETED'] &&
+            incoming().hasFeedbackSubmitted == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['hasFeedbackSubmitted', 'updatedAt'])
+          ) ||
+          // Action 2 (Customer): Cancel own order ONLY while PLACED (terminal states locked)
+          (
+            existing().customerId == request.auth.uid &&
+            existing().orderStatus == 'PLACED' &&
+            incoming().orderStatus == 'CANCELLED' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['orderStatus', 'updatedAt'])
+          ) ||
+          // Action 3 (Admin): Manage order lifecycle & payment state
+          (
+            isAdmin() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['orderStatus', 'paymentStatus', 'updatedAt'])
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection: /feedback/{feedbackId} — Atomic Post-Order Reviews
+    // -------------------------------------------------------------------------
+    match /feedback/{feedbackId} {
+      allow get: if isSignedIn() && isValidId(feedbackId) && (existing().customerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.customerId == request.auth.uid || isBootstrapAdmin());
+
+      allow create: if isVerifiedEmail() &&
+        isValidId(feedbackId) &&
+        isValidFeedback(incoming(), feedbackId) &&
+        incoming().customerId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/orders/$(incoming().orderId)) &&
+        get(/databases/$(database)/documents/orders/$(incoming().orderId)).data.customerId == request.auth.uid &&
+        get(/databases/$(database)/documents/orders/$(incoming().orderId)).data.orderStatus in ['READY', 'COMPLETED'] &&
+        get(/databases/$(database)/documents/orders/$(incoming().orderId)).data.hasFeedbackSubmitted == false &&
+        getAfter(/databases/$(database)/documents/orders/$(incoming().orderId)).data.hasFeedbackSubmitted == true;
+
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

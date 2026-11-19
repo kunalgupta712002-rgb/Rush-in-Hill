@@ -1,0 +1,297 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated customer profile stored privately per user UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Authentication UID matching the document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Customer full display name.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified account email address.",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "phone": {
+          "type": "string",
+          "description": "10-digit Indian mobile/WhatsApp number (optional before profile completion).",
+          "minLength": 0,
+          "maxLength": 15,
+          "pattern": "^(|[6-9][0-9]{9})$"
+        },
+        "customerType": {
+          "type": "string",
+          "description": "Campus or local customer segment.",
+          "enum": ["DGU Student", "Day Scholar", "Industrial Employee", "Other"],
+          "maxLength": 40
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Profile avatar URL from auth provider.",
+          "maxLength": 500
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account profile was last updated."
+        }
+      },
+      "required": ["uid", "displayName", "email", "customerType", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted RBAC admin allowlist document keyed by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 150
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer takeaway or dine-in food order.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 15,
+          "pattern": "^[6-9][0-9]{9}$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 150
+        },
+        "customerType": {
+          "type": "string",
+          "enum": ["DGU Student", "Day Scholar", "Industrial Employee", "Other"],
+          "maxLength": 40
+        },
+        "items": {
+          "type": "array",
+          "description": "Bounded list (1-50) of ordered dish line items."
+        },
+        "subtotal": {
+          "type": "number"
+        },
+        "discount": {
+          "type": "number"
+        },
+        "total": {
+          "type": "number"
+        },
+        "orderType": {
+          "type": "string",
+          "enum": ["Takeaway / Pickup", "Dine-in"],
+          "maxLength": 30
+        },
+        "tableNumber": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["UPI / Online Payment (Demo)", "Pay at Counter"],
+          "maxLength": 40
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["Pending", "Paid"],
+          "maxLength": 20
+        },
+        "orderStatus": {
+          "type": "string",
+          "enum": ["PLACED", "CONFIRMED", "PREPARING", "READY", "COMPLETED", "CANCELLED"],
+          "maxLength": 20
+        },
+        "specialInstructions": {
+          "type": "string",
+          "maxLength": 300
+        },
+        "estimatedPrepTimeMinutes": {
+          "type": "number"
+        },
+        "hasFeedbackSubmitted": {
+          "type": "boolean"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "customerId",
+        "customerName",
+        "phone",
+        "customerType",
+        "items",
+        "subtotal",
+        "discount",
+        "total",
+        "orderType",
+        "paymentMethod",
+        "paymentStatus",
+        "orderStatus",
+        "estimatedPrepTimeMinutes",
+        "hasFeedbackSubmitted",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CustomerFeedback": {
+      "title": "CustomerFeedback",
+      "description": "Post-order quality rating tied atomically to a customer's completed or ready order.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orderId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "customerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "overallRating": {
+          "type": "number"
+        },
+        "tasteRating": {
+          "type": "number"
+        },
+        "hygieneRating": {
+          "type": "number"
+        },
+        "serviceRating": {
+          "type": "number"
+        },
+        "valueRating": {
+          "type": "number"
+        },
+        "comment": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "wouldRecommend": {
+          "type": "string",
+          "enum": ["Yes", "Maybe", "No"],
+          "maxLength": 10
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "orderId",
+        "customerId",
+        "customerName",
+        "overallRating",
+        "tasteRating",
+        "hygieneRating",
+        "serviceRating",
+        "valueRating",
+        "comment",
+        "wouldRecommend",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Private customer account profiles containing PII; strictly restricted to owner or admin."
+    },
+    "/admins/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AdminRecord"
+      },
+      "description": "Trusted admin role allowlist records."
+    },
+    "/orders/{orderId}": {
+      "schema": {
+        "$ref": "#/entities/Order"
+      },
+      "description": "Customer food orders linked to authenticated user UID."
+    },
+    "/feedback/{feedbackId}": {
+      "schema": {
+        "$ref": "#/entities/CustomerFeedback"
+      },
+      "description": "Verified post-order ratings linked atomically to orders."
+    }
+  }
+}

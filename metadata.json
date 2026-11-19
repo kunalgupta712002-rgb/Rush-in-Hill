@@ -1,0 +1,6 @@
+{
+  "name": "Rush in Hill Restro and Cafe",
+  "description": "Tasty, hygienic and affordable meals near DGU, Selaqui — casual dining, dine-in pre-orders, and takeaway for students and professionals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
